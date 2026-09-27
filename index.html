@@ -134,39 +134,68 @@ function save(){
 
 function wordsOf(str){ return (str.match(/\S+/g) || []).length; }
 
+function findEntry(zip, path){
+  if (!path) return null;
+  const candidates = [path, decodeURIComponent(path), encodeURI(path), path.replace(/^\.?\//, '')];
+  for (const c of candidates) { const f = zip.file(c); if (f) return f; }
+  // last resort: match by filename ignoring folder casing/prefixes
+  const wanted = path.split('/').pop().toLowerCase();
+  const all = zip.file(/.*/);
+  return all.find(f => f.name.toLowerCase().endsWith(wanted)) || null;
+}
+function byLocalName(doc, name){
+  return [...doc.getElementsByTagName('*')].filter(el => (el.localName || el.tagName.split(':').pop()) === name);
+}
+
+async function readFileWithRetry(file, attempts = 3){
+  for (let i = 0; i < attempts; i++) {
+    try { return await file.arrayBuffer(); }
+    catch(e) {
+      if (i === attempts - 1) throw e;
+      await new Promise(r => setTimeout(r, 400 * (i + 1)));
+    }
+  }
+}
+
 async function parseEpub(file){
-  const zip = await JSZip.loadAsync(await file.arrayBuffer());
-  const containerXml = await zip.file('META-INF/container.xml').async('string');
-  const containerDoc = new DOMParser().parseFromString(containerXml, 'application/xml');
-  const opfPath = containerDoc.getElementsByTagName('rootfile')[0].getAttribute('full-path');
-  const baseDir = opfPath.includes('/') ? opfPath.slice(0, opfPath.lastIndexOf('/') + 1) : '';
-  const opfXml = await zip.file(opfPath).async('string');
-  const opfDoc = new DOMParser().parseFromString(opfXml, 'application/xml');
+  const zip = await JSZip.loadAsync(await readFileWithRetry(file));
+  const fallbackTitle = file.name.replace(/\.epub$/i, '');
+  let title = fallbackTitle, author = 'Unknown', genre = '', wordCount = 0, hadError = false;
 
-  const tag = (name) => opfDoc.getElementsByTagName(name)[0] || opfDoc.getElementsByTagNameNS('*', name)[0];
-  const title = tag('dc:title')?.textContent?.trim() || file.name.replace(/\.epub$/i, '');
-  const author = tag('dc:creator')?.textContent?.trim() || 'Unknown';
-  const subjectNodes = [...opfDoc.getElementsByTagName('dc:subject'), ...opfDoc.getElementsByTagNameNS('*','subject')];
-  const genre = subjectNodes[0]?.textContent?.trim() || '';
+  try {
+    const containerEntry = findEntry(zip, 'META-INF/container.xml');
+    const containerXml = await containerEntry.async('string');
+    const containerDoc = new DOMParser().parseFromString(containerXml, 'application/xml');
+    const opfPath = byLocalName(containerDoc, 'rootfile')[0]?.getAttribute('full-path');
+    const baseDir = opfPath && opfPath.includes('/') ? opfPath.slice(0, opfPath.lastIndexOf('/') + 1) : '';
+    const opfEntry = findEntry(zip, opfPath);
+    const opfXml = await opfEntry.async('string');
+    const opfDoc = new DOMParser().parseFromString(opfXml, 'application/xml');
 
-  const manifest = {};
-  for (const item of opfDoc.getElementsByTagName('item')) {
-    manifest[item.getAttribute('id')] = item.getAttribute('href');
-  }
-  let wordCount = 0;
-  for (const itemref of opfDoc.getElementsByTagName('itemref')) {
-    const href = manifest[itemref.getAttribute('idref')];
-    if (!href) continue;
-    const path = baseDir + href;
-    const entry = zip.file(path) || zip.file(decodeURIComponent(path));
-    if (!entry) continue;
+    try { title = byLocalName(opfDoc, 'title')[0]?.textContent?.trim() || fallbackTitle; } catch(e){}
+    try { author = byLocalName(opfDoc, 'creator')[0]?.textContent?.trim() || 'Unknown'; } catch(e){}
+    try { genre = byLocalName(opfDoc, 'subject')[0]?.textContent?.trim() || ''; } catch(e){}
+
     try {
-      const html = await entry.async('string');
-      const text = new DOMParser().parseFromString(html, 'text/html').body?.textContent || '';
-      wordCount += wordsOf(text);
-    } catch(e) {}
+      const manifest = {};
+      for (const item of byLocalName(opfDoc, 'item')) manifest[item.getAttribute('id')] = item.getAttribute('href');
+      for (const itemref of byLocalName(opfDoc, 'itemref')) {
+        const href = manifest[itemref.getAttribute('idref')];
+        if (!href) continue;
+        const entry = findEntry(zip, baseDir + href);
+        if (!entry) continue;
+        try {
+          const html = await entry.async('string');
+          const text = new DOMParser().parseFromString(html, 'text/html').body?.textContent || '';
+          wordCount += wordsOf(text);
+        } catch(e) {}
+      }
+    } catch(e) { hadError = true; }
+  } catch(e) {
+    console.error('Epub parse error for', file.name, e);
+    hadError = true;
   }
-  return { id: crypto.randomUUID(), title, author, genre, tropes: [], wordCount, dateAdded: Date.now(), sourceFile: file.name };
+  return { id: crypto.randomUUID(), title, author, genre, tropes: [], wordCount, dateAdded: Date.now(), sourceFile: file.name, parseError: hadError && wordCount === 0 };
 }
 
 document.getElementById('uploadBtn').onclick = () => document.getElementById('fileInput').click();
@@ -178,7 +207,11 @@ document.getElementById('fileInput').onchange = async (e) => {
     try {
       library.push(await parseEpub(files[i]));
     } catch(err) {
-      console.error('Failed to parse', files[i].name, err);
+      if (err.name === 'AbortError') {
+        console.error(`Failed to parse ${files[i].name}: the browser couldn't fully read this file after 3 tries. If it lives in a cloud-synced folder (OneDrive, Google Drive, iCloud Drive, Dropbox), make sure it's downloaded/available offline, or copy it somewhere fully local and try again.`);
+      } else {
+        console.error('Failed to parse', files[i].name, err);
+      }
       library.push({ id: crypto.randomUUID(), title: files[i].name.replace(/\.epub$/i,''), author: 'Unknown', genre:'', tropes:[], wordCount:0, dateAdded: Date.now(), sourceFile: files[i].name, parseError:true });
     }
   }
