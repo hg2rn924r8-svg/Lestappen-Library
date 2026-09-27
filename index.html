@@ -76,6 +76,8 @@ main{flex:1;min-width:0}
 .reader-bar h3{font-size:15px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .reader-bar button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:3px;padding:7px 12px;cursor:pointer;font-size:13px;font-family:var(--sans)}
 #readerArea{flex:1;position:relative;overflow:hidden}
+#readerLoading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);font-family:var(--serif);font-size:16px;z-index:1;background:var(--bg)}
+#readerLoading.hidden{display:none}
 .reader-nav{position:absolute;top:0;bottom:0;width:15%;display:flex;align-items:center;z-index:2;background:none;border:none;cursor:pointer;color:var(--ink-soft);font-size:22px}
 .reader-nav.prev{left:0;justify-content:flex-start;padding-left:6px}
 .reader-nav.next{right:0;justify-content:flex-end;padding-right:6px}
@@ -88,6 +90,7 @@ main{flex:1;min-width:0}
     <button id="readerClose">Close</button>
   </div>
   <div id="readerArea">
+    <div id="readerLoading">Loading book…</div>
     <button class="reader-nav prev" id="readerPrev">‹</button>
     <button class="reader-nav next" id="readerNext">›</button>
   </div>
@@ -390,15 +393,19 @@ function render(){
   });
 }
 
-let currentBook = null, currentRendition = null;
+let currentBook = null, currentRendition = null, readerReady = false;
 async function openReader(book){
   if (!book.fileBlob) { alert("This book's original file wasn't kept, so it can't be reopened for reading — try re-adding it."); return; }
+  readerReady = false;
   document.getElementById('readerTitle').textContent = book.title;
   document.getElementById('readerOverlay').classList.add('open');
+  document.getElementById('readerLoading').classList.remove('hidden');
   try {
     currentBook = ePub(await book.fileBlob.arrayBuffer());
     currentRendition = currentBook.renderTo('readerArea', { width: '100%', height: '100%', flow: 'paginated', spread: 'auto' });
     await currentRendition.display();
+    readerReady = true;
+    document.getElementById('readerLoading').classList.add('hidden');
   } catch(e) {
     console.error('Reader failed to open', e);
     alert("Sorry, this book couldn't be opened for reading — it may use a format the reader doesn't support.");
@@ -406,17 +413,21 @@ async function openReader(book){
   }
 }
 function closeReader(){
+  readerReady = false;
   document.getElementById('readerOverlay').classList.remove('open');
+  document.getElementById('readerLoading').classList.remove('hidden');
   try { currentRendition?.destroy(); currentBook?.destroy(); } catch(e){}
   currentRendition = null; currentBook = null;
 }
+function goPrev(){ if (readerReady) try { currentRendition.prev(); } catch(e){ console.error(e); } }
+function goNext(){ if (readerReady) try { currentRendition.next(); } catch(e){ console.error(e); } }
 document.getElementById('readerClose').onclick = closeReader;
-document.getElementById('readerPrev').onclick = () => currentRendition?.prev();
-document.getElementById('readerNext').onclick = () => currentRendition?.next();
+document.getElementById('readerPrev').onclick = goPrev;
+document.getElementById('readerNext').onclick = goNext;
 document.addEventListener('keydown', e => {
   if (!document.getElementById('readerOverlay').classList.contains('open')) return;
-  if (e.key === 'ArrowLeft') currentRendition?.prev();
-  if (e.key === 'ArrowRight') currentRendition?.next();
+  if (e.key === 'ArrowLeft') goPrev();
+  if (e.key === 'ArrowRight') goNext();
   if (e.key === 'Escape') closeReader();
 });
 
