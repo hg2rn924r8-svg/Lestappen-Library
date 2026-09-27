@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stacks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{
+  --bg:#EDEAE1; --panel:#E3DFD2; --ink:#20241E; --ink-soft:#5B5F55;
+  --accent:#7A3B32; --accent-soft:#9C6B54; --line:#C9C3B2;
+  --serif:'Source Serif 4',Georgia,serif; --mono:'IBM Plex Mono',monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  box-sizing:border-box;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#1B1D18; --panel:#242620; --ink:#EDEAE1; --ink-soft:#A9A796;
+    --accent:#D08A6E; --accent-soft:#B37058; --line:#3A3C34;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#1B1D18; --panel:#242620; --ink:#EDEAE1; --ink-soft:#A9A796;
+  --accent:#D08A6E; --accent-soft:#B37058; --line:#3A3C34;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);height:100%}
+h1,h2,h3{font-family:var(--serif);font-weight:600;margin:0}
+.wrap{max-width:1200px;margin:0 auto;padding:28px 20px 60px}
+header{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:22px;border-bottom:1px solid var(--line);padding-bottom:18px}
+header h1{font-size:28px;letter-spacing:.2px}
+header p{margin:4px 0 0;color:var(--ink-soft);font-size:14px}
+.upload-btn{background:var(--accent);color:#fff;border:none;padding:10px 16px;border-radius:3px;font-size:14px;cursor:pointer;font-family:var(--sans)}
+.upload-btn:hover{background:var(--accent-soft)}
+#progress{font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin-top:8px}
+.layout{display:flex;gap:26px;align-items:flex-start}
+aside{width:230px;flex-shrink:0;position:sticky;top:20px}
+aside section{margin-bottom:22px}
+aside h3{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-soft);font-family:var(--sans);font-weight:600;margin-bottom:8px}
+.facet-list{max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:5px}
+.facet-list label{display:flex;gap:7px;align-items:center;font-size:13px;cursor:pointer}
+.range-row{display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:12px}
+.range-row input{width:70px;padding:5px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:2px}
+.clear-btn{font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;padding:0;text-decoration:underline}
+main{flex:1;min-width:0}
+.toolbar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.toolbar input[type=search], .toolbar select{padding:9px 10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:3px;font-size:14px;font-family:var(--sans)}
+.toolbar input[type=search]{flex:1;min-width:160px}
+.count{font-family:var(--mono);font-size:12px;color:var(--ink-soft);margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:14px}
+.card h3{font-size:16px;line-height:1.25;margin-bottom:3px}
+.card .author{font-size:13px;color:var(--ink-soft);margin-bottom:8px}
+.card .meta{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-bottom:8px}
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.tag{font-size:11px;padding:2px 7px;border:1px solid var(--line);border-radius:20px;color:var(--ink-soft)}
+.tag.genre{border-color:var(--accent-soft);color:var(--accent)}
+.card-actions{display:flex;gap:10px}
+.card-actions button{font-size:12px;background:none;border:none;color:var(--accent);cursor:pointer;padding:0;text-decoration:underline}
+.edit-form{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:7px}
+.edit-form label{font-size:11px;color:var(--ink-soft)}
+.edit-form input{padding:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:2px;font-size:13px;width:100%}
+.edit-form .row{display:flex;gap:8px}
+.edit-form .row button{flex:1;padding:6px;border:1px solid var(--line);background:var(--accent);color:#fff;border-radius:2px;cursor:pointer;font-size:12px}
+.edit-form .row button.del{background:none;color:var(--accent);border-color:var(--accent)}
+.empty{color:var(--ink-soft);font-size:14px;padding:40px 0;text-align:center;font-family:var(--serif);font-size:18px}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+@media(max-width:760px){.layout{flex-direction:column}aside{width:100%;position:static}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Stacks</h1>
+      <p>Your private epub archive — stored only in this browser.</p>
+    </div>
+    <div>
+      <input type="file" id="fileInput" accept=".epub" multiple style="display:none">
+      <button class="upload-btn" id="uploadBtn">Add epubs</button>
+      <div id="progress"></div>
+    </div>
+  </header>
+  <div class="layout">
+    <aside>
+      <section>
+        <h3>Genre</h3>
+        <div class="facet-list" id="genreFacets"></div>
+      </section>
+      <section>
+        <h3>Tropes</h3>
+        <div class="facet-list" id="tropeFacets"></div>
+      </section>
+      <section>
+        <h3>Word count</h3>
+        <div class="range-row">
+          <input type="number" id="wcMin" placeholder="min">
+          <span>–</span>
+          <input type="number" id="wcMax" placeholder="max">
+        </div>
+      </section>
+      <button class="clear-btn" id="clearFilters">Clear all filters</button>
+    </aside>
+    <main>
+      <div class="toolbar">
+        <input type="search" id="search" placeholder="Search title or author…">
+        <select id="sortSel">
+          <option value="title-asc">Title A–Z</option>
+          <option value="author-asc">Author A–Z</option>
+          <option value="wc-desc">Word count: high–low</option>
+          <option value="wc-asc">Word count: low–high</option>
+          <option value="date-desc">Recently added</option>
+        </select>
+      </div>
+      <div class="count" id="count"></div>
+      <div class="grid" id="grid"></div>
+    </main>
+  </div>
+</div>
+<script>
+const STORAGE_KEY = 'stacks-library-v1';
+let library = [];
+try { library = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e){ library = []; }
+
+const filters = { genres: new Set(), tropes: new Set(), wcMin: null, wcMax: null, search: '', sort: 'title-asc' };
+
+function save(){
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(library)); }
+  catch(e){ console.error('Storage save failed', e); }
+}
+
+function wordsOf(str){ return (str.match(/\S+/g) || []).length; }
+
+async function parseEpub(file){
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const containerXml = await zip.file('META-INF/container.xml').async('string');
+  const containerDoc = new DOMParser().parseFromString(containerXml, 'application/xml');
+  const opfPath = containerDoc.getElementsByTagName('rootfile')[0].getAttribute('full-path');
+  const baseDir = opfPath.includes('/') ? opfPath.slice(0, opfPath.lastIndexOf('/') + 1) : '';
+  const opfXml = await zip.file(opfPath).async('string');
+  const opfDoc = new DOMParser().parseFromString(opfXml, 'application/xml');
+
+  const tag = (name) => opfDoc.getElementsByTagName(name)[0] || opfDoc.getElementsByTagNameNS('*', name)[0];
+  const title = tag('dc:title')?.textContent?.trim() || file.name.replace(/\.epub$/i, '');
+  const author = tag('dc:creator')?.textContent?.trim() || 'Unknown';
+  const subjectNodes = [...opfDoc.getElementsByTagName('dc:subject'), ...opfDoc.getElementsByTagNameNS('*','subject')];
+  const genre = subjectNodes[0]?.textContent?.trim() || '';
+
+  const manifest = {};
+  for (const item of opfDoc.getElementsByTagName('item')) {
+    manifest[item.getAttribute('id')] = item.getAttribute('href');
+  }
+  let wordCount = 0;
+  for (const itemref of opfDoc.getElementsByTagName('itemref')) {
+    const href = manifest[itemref.getAttribute('idref')];
+    if (!href) continue;
+    const path = baseDir + href;
+    const entry = zip.file(path) || zip.file(decodeURIComponent(path));
+    if (!entry) continue;
+    try {
+      const html = await entry.async('string');
+      const text = new DOMParser().parseFromString(html, 'text/html').body?.textContent || '';
+      wordCount += wordsOf(text);
+    } catch(e) {}
+  }
+  return { id: crypto.randomUUID(), title, author, genre, tropes: [], wordCount, dateAdded: Date.now(), sourceFile: file.name };
+}
+
+document.getElementById('uploadBtn').onclick = () => document.getElementById('fileInput').click();
+document.getElementById('fileInput').onchange = async (e) => {
+  const files = [...e.target.files];
+  const progress = document.getElementById('progress');
+  for (let i = 0; i < files.length; i++) {
+    progress.textContent = `Parsing ${i+1} of ${files.length}: ${files[i].name}`;
+    try {
+      library.push(await parseEpub(files[i]));
+    } catch(err) {
+      console.error('Failed to parse', files[i].name, err);
+      library.push({ id: crypto.randomUUID(), title: files[i].name.replace(/\.epub$/i,''), author: 'Unknown', genre:'', tropes:[], wordCount:0, dateAdded: Date.now(), sourceFile: files[i].name, parseError:true });
+    }
+  }
+  progress.textContent = '';
+  save(); buildFacets(); render();
+  e.target.value = '';
+};
+
+function buildFacets(){
+  const genres = new Set(), tropes = new Set();
+  library.forEach(b => { if (b.genre) genres.add(b.genre); (b.tropes||[]).forEach(t => tropes.add(t)); });
+  const buildList = (el, set, targetSet) => {
+    el.innerHTML = '';
+    [...set].sort().forEach(val => {
+      const label = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = targetSet.has(val);
+      cb.onchange = () => { cb.checked ? targetSet.add(val) : targetSet.delete(val); render(); };
+      label.appendChild(cb);
+      label.appendChild(document.createTextNode(val));
+      el.appendChild(label);
+    });
+  };
+  buildList(document.getElementById('genreFacets'), genres, filters.genres);
+  buildList(document.getElementById('tropeFacets'), tropes, filters.tropes);
+}
+
+document.getElementById('search').oninput = e => { filters.search = e.target.value.toLowerCase(); render(); };
+document.getElementById('sortSel').onchange = e => { filters.sort = e.target.value; render(); };
+document.getElementById('wcMin').oninput = e => { filters.wcMin = e.target.value ? +e.target.value : null; render(); };
+document.getElementById('wcMax').oninput = e => { filters.wcMax = e.target.value ? +e.target.value : null; render(); };
+document.getElementById('clearFilters').onclick = () => {
+  filters.genres.clear(); filters.tropes.clear(); filters.wcMin = null; filters.wcMax = null;
+  document.getElementById('wcMin').value = ''; document.getElementById('wcMax').value = '';
+  buildFacets(); render();
+};
+
+function editForm(book){
+  return `<div class="edit-form">
+    <label>Genre</label><input data-f="genre" value="${escAttr(book.genre)}">
+    <label>Tropes (comma separated)</label><input data-f="tropes" value="${escAttr((book.tropes||[]).join(', '))}">
+    <div class="row"><button data-act="save">Save</button><button class="del" data-act="delete">Delete</button></div>
+  </div>`;
+}
+function escAttr(s){ return String(s||'').replace(/"/g,'&quot;'); }
+function escHtml(s){ return String(s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function render(){
+  let list = library.filter(b => {
+    if (filters.search && !(b.title.toLowerCase().includes(filters.search) || b.author.toLowerCase().includes(filters.search))) return false;
+    if (filters.genres.size && !filters.genres.has(b.genre)) return false;
+    if (filters.tropes.size && ![...filters.tropes].every(t => (b.tropes||[]).includes(t))) return false;
+    if (filters.wcMin != null && b.wordCount < filters.wcMin) return false;
+    if (filters.wcMax != null && b.wordCount > filters.wcMax) return false;
+    return true;
+  });
+  const sorters = {
+    'title-asc': (a,b) => a.title.localeCompare(b.title),
+    'author-asc': (a,b) => a.author.localeCompare(b.author),
+    'wc-desc': (a,b) => b.wordCount - a.wordCount,
+    'wc-asc': (a,b) => a.wordCount - b.wordCount,
+    'date-desc': (a,b) => b.dateAdded - a.dateAdded,
+  };
+  list.sort(sorters[filters.sort]);
+
+  document.getElementById('count').textContent = `${list.length} of ${library.length} books`;
+  const grid = document.getElementById('grid');
+  if (!library.length) {
+    grid.innerHTML = '<div class="empty">Your shelf is empty. Add some epubs to begin.</div>';
+    return;
+  }
+  if (!list.length) {
+    grid.innerHTML = '<div class="empty">Nothing matches these filters.</div>';
+    return;
+  }
+  grid.innerHTML = list.map(b => `
+    <div class="card" data-id="${b.id}">
+      <h3>${escHtml(b.title)}</h3>
+      <div class="author">${escHtml(b.author)}</div>
+      <div class="meta">${b.wordCount.toLocaleString()} words${b.parseError ? ' · parse incomplete' : ''}</div>
+      <div class="tags">
+        ${b.genre ? `<span class="tag genre">${escHtml(b.genre)}</span>` : ''}
+        ${(b.tropes||[]).map(t => `<span class="tag">${escHtml(t)}</span>`).join('')}
+      </div>
+      <div class="card-actions"><button data-act="edit">Edit tags</button></div>
+    </div>`).join('');
+
+  grid.querySelectorAll('[data-act="edit"]').forEach(btn => {
+    btn.onclick = () => {
+      const card = btn.closest('.card');
+      if (card.querySelector('.edit-form')) { card.querySelector('.edit-form').remove(); return; }
+      card.insertAdjacentHTML('beforeend', editForm(library.find(b => b.id === card.dataset.id)));
+      card.querySelector('[data-act="save"]').onclick = () => {
+        const book = library.find(b => b.id === card.dataset.id);
+        book.genre = card.querySelector('[data-f="genre"]').value.trim();
+        book.tropes = card.querySelector('[data-f="tropes"]').value.split(',').map(s => s.trim()).filter(Boolean);
+        save(); buildFacets(); render();
+      };
+      card.querySelector('[data-act="delete"]').onclick = () => {
+        if (!confirm('Remove this book from your shelf?')) return;
+        library = library.filter(b => b.id !== card.dataset.id);
+        save(); buildFacets(); render();
+      };
+    };
+  });
+}
+
+buildFacets(); render();
+</script>
+</body>
+</html>
