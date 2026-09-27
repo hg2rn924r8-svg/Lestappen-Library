@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
 <style>
 :root{
   --bg:#EDEAE1; --panel:#E3DFD2; --ink:#20241E; --ink-soft:#5B5F55;
@@ -69,9 +70,28 @@ main{flex:1;min-width:0}
 .empty{color:var(--ink-soft);font-size:14px;padding:40px 0;text-align:center;font-family:var(--serif);font-size:18px}
 ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
 @media(max-width:760px){.layout{flex-direction:column}aside{width:100%;position:static}}
+#readerOverlay{position:fixed;inset:0;background:var(--bg);z-index:100;display:none;flex-direction:column}
+#readerOverlay.open{display:flex}
+.reader-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);flex-shrink:0}
+.reader-bar h3{font-size:15px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reader-bar button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:3px;padding:7px 12px;cursor:pointer;font-size:13px;font-family:var(--sans)}
+#readerArea{flex:1;position:relative;overflow:hidden}
+.reader-nav{position:absolute;top:0;bottom:0;width:15%;display:flex;align-items:center;z-index:2;background:none;border:none;cursor:pointer;color:var(--ink-soft);font-size:22px}
+.reader-nav.prev{left:0;justify-content:flex-start;padding-left:6px}
+.reader-nav.next{right:0;justify-content:flex-end;padding-right:6px}
 </style>
 </head>
 <body>
+<div id="readerOverlay">
+  <div class="reader-bar">
+    <h3 id="readerTitle"></h3>
+    <button id="readerClose">Close</button>
+  </div>
+  <div id="readerArea">
+    <button class="reader-nav prev" id="readerPrev">‹</button>
+    <button class="reader-nav next" id="readerNext">›</button>
+  </div>
+</div>
 <div class="wrap">
   <header>
     <div>
@@ -103,6 +123,7 @@ main{flex:1;min-width:0}
         </div>
       </section>
       <button class="clear-btn" id="clearFilters">Clear all filters</button>
+      <button class="clear-btn" id="removeOld" style="display:block;margin-top:8px">Remove old-format books</button>
     </aside>
     <main>
       <div class="toolbar">
@@ -121,15 +142,42 @@ main{flex:1;min-width:0}
   </div>
 </div>
 <script>
-const STORAGE_KEY = 'stacks-library-v1';
 let library = [];
-try { library = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e){ library = []; }
-
 const filters = { genres: new Set(), tropes: new Set(), wcMin: null, wcMax: null, search: '', sort: 'title-asc' };
 
-function save(){
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(library)); }
-  catch(e){ console.error('Storage save failed', e); }
+function openDB(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('stacks-db', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('books', { keyPath: 'id' });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function dbGetAll(){
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('books', 'readonly').objectStore('books').getAll();
+    tx.onsuccess = () => resolve(tx.result || []);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function dbPut(book){
+  try {
+    const db = await openDB();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('books', 'readwrite').objectStore('books').put(book);
+      tx.onsuccess = resolve; tx.onerror = () => reject(tx.error);
+    });
+  } catch(e){ console.error('Could not save book to storage', e); }
+}
+async function dbDelete(id){
+  try {
+    const db = await openDB();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('books', 'readwrite').objectStore('books').delete(id);
+      tx.onsuccess = resolve; tx.onerror = () => reject(tx.error);
+    });
+  } catch(e){ console.error('Could not delete book from storage', e); }
 }
 
 function wordsOf(str){ return (str.match(/\S+/g) || []).length; }
@@ -195,7 +243,7 @@ async function parseEpub(file){
     console.error('Epub parse error for', file.name, e);
     hadError = true;
   }
-  return { id: crypto.randomUUID(), title, author, genre, tropes: [], wordCount, dateAdded: Date.now(), sourceFile: file.name, parseError: hadError && wordCount === 0 };
+  return { id: crypto.randomUUID(), title, author, genre, tropes: [], wordCount, dateAdded: Date.now(), sourceFile: file.name, parseError: hadError && wordCount === 0, fileBlob: file };
 }
 
 document.getElementById('uploadBtn').onclick = () => document.getElementById('fileInput').click();
@@ -204,19 +252,22 @@ document.getElementById('fileInput').onchange = async (e) => {
   const progress = document.getElementById('progress');
   for (let i = 0; i < files.length; i++) {
     progress.textContent = `Parsing ${i+1} of ${files.length}: ${files[i].name}`;
+    let book;
     try {
-      library.push(await parseEpub(files[i]));
+      book = await parseEpub(files[i]);
     } catch(err) {
       if (err.name === 'AbortError') {
         console.error(`Failed to parse ${files[i].name}: the browser couldn't fully read this file after 3 tries. If it lives in a cloud-synced folder (OneDrive, Google Drive, iCloud Drive, Dropbox), make sure it's downloaded/available offline, or copy it somewhere fully local and try again.`);
       } else {
         console.error('Failed to parse', files[i].name, err);
       }
-      library.push({ id: crypto.randomUUID(), title: files[i].name.replace(/\.epub$/i,''), author: 'Unknown', genre:'', tropes:[], wordCount:0, dateAdded: Date.now(), sourceFile: files[i].name, parseError:true });
+      book = { id: crypto.randomUUID(), title: files[i].name.replace(/\.epub$/i,''), author: 'Unknown', genre:'', tropes:[], wordCount:0, dateAdded: Date.now(), sourceFile: files[i].name, parseError:true, fileBlob: files[i] };
     }
+    library.push(book);
+    await dbPut(book);
+    buildFacets(); render();
   }
   progress.textContent = '';
-  save(); buildFacets(); render();
   e.target.value = '';
 };
 
@@ -248,12 +299,20 @@ document.getElementById('clearFilters').onclick = () => {
   document.getElementById('wcMin').value = ''; document.getElementById('wcMax').value = '';
   buildFacets(); render();
 };
+document.getElementById('removeOld').onclick = async () => {
+  const stale = library.filter(b => !b.fileBlob);
+  if (!stale.length) { alert('No old-format books found — everything already has a saved file.'); return; }
+  if (!confirm(`Remove ${stale.length} book(s) that don't have a saved file? You can re-upload them anytime to add them back with reading enabled.`)) return;
+  for (const b of stale) await dbDelete(b.id);
+  library = library.filter(b => b.fileBlob);
+  buildFacets(); render();
+};
 
 function editForm(book){
   return `<div class="edit-form">
     <label>Genre</label><input data-f="genre" value="${escAttr(book.genre)}">
     <label>Tropes (comma separated)</label><input data-f="tropes" value="${escAttr((book.tropes||[]).join(', '))}">
-    <div class="row"><button data-act="save">Save</button><button class="del" data-act="delete">Delete</button></div>
+    <div class="row"><button data-act="save">Save</button><button class="del" data-act="form-delete">Delete</button></div>
   </div>`;
 }
 function escAttr(s){ return String(s||'').replace(/"/g,'&quot;'); }
@@ -296,30 +355,85 @@ function render(){
         ${b.genre ? `<span class="tag genre">${escHtml(b.genre)}</span>` : ''}
         ${(b.tropes||[]).map(t => `<span class="tag">${escHtml(t)}</span>`).join('')}
       </div>
-      <div class="card-actions"><button data-act="edit">Edit tags</button></div>
+      <div class="card-actions">
+        ${b.fileBlob ? '<button data-act="read">Read</button>' : ''}
+        <button data-act="edit">Edit tags</button>
+        <button data-act="delete">Delete</button>
+      </div>
     </div>`).join('');
 
+  grid.querySelectorAll('[data-act="read"]').forEach(btn => {
+    btn.onclick = () => openReader(library.find(b => b.id === btn.closest('.card').dataset.id));
+  });
+  async function deleteBook(id){
+    if (!confirm('Remove this book from your shelf?')) return;
+    await dbDelete(id);
+    library = library.filter(b => b.id !== id);
+    buildFacets(); render();
+  }
+  grid.querySelectorAll('.card-actions > [data-act="delete"]').forEach(btn => {
+    btn.onclick = () => deleteBook(btn.closest('.card').dataset.id);
+  });
   grid.querySelectorAll('[data-act="edit"]').forEach(btn => {
     btn.onclick = () => {
       const card = btn.closest('.card');
       if (card.querySelector('.edit-form')) { card.querySelector('.edit-form').remove(); return; }
       card.insertAdjacentHTML('beforeend', editForm(library.find(b => b.id === card.dataset.id)));
-      card.querySelector('[data-act="save"]').onclick = () => {
+      card.querySelector('[data-act="save"]').onclick = async () => {
         const book = library.find(b => b.id === card.dataset.id);
         book.genre = card.querySelector('[data-f="genre"]').value.trim();
         book.tropes = card.querySelector('[data-f="tropes"]').value.split(',').map(s => s.trim()).filter(Boolean);
-        save(); buildFacets(); render();
+        await dbPut(book); buildFacets(); render();
       };
-      card.querySelector('[data-act="delete"]').onclick = () => {
-        if (!confirm('Remove this book from your shelf?')) return;
-        library = library.filter(b => b.id !== card.dataset.id);
-        save(); buildFacets(); render();
-      };
+      card.querySelector('[data-act="form-delete"]').onclick = () => deleteBook(card.dataset.id);
     };
   });
 }
 
-buildFacets(); render();
+let currentBook = null, currentRendition = null;
+async function openReader(book){
+  if (!book.fileBlob) { alert("This book's original file wasn't kept, so it can't be reopened for reading — try re-adding it."); return; }
+  document.getElementById('readerTitle').textContent = book.title;
+  document.getElementById('readerOverlay').classList.add('open');
+  try {
+    currentBook = ePub(await book.fileBlob.arrayBuffer());
+    currentRendition = currentBook.renderTo('readerArea', { width: '100%', height: '100%', flow: 'paginated', spread: 'auto' });
+    await currentRendition.display();
+  } catch(e) {
+    console.error('Reader failed to open', e);
+    alert("Sorry, this book couldn't be opened for reading — it may use a format the reader doesn't support.");
+    closeReader();
+  }
+}
+function closeReader(){
+  document.getElementById('readerOverlay').classList.remove('open');
+  try { currentRendition?.destroy(); currentBook?.destroy(); } catch(e){}
+  currentRendition = null; currentBook = null;
+}
+document.getElementById('readerClose').onclick = closeReader;
+document.getElementById('readerPrev').onclick = () => currentRendition?.prev();
+document.getElementById('readerNext').onclick = () => currentRendition?.next();
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('readerOverlay').classList.contains('open')) return;
+  if (e.key === 'ArrowLeft') currentRendition?.prev();
+  if (e.key === 'ArrowRight') currentRendition?.next();
+  if (e.key === 'Escape') closeReader();
+});
+
+(async function init(){
+  try {
+    library = await dbGetAll();
+    if (!library.length) {
+      let old = [];
+      try { old = JSON.parse(localStorage.getItem('stacks-library-v1') || '[]'); } catch(e){}
+      if (old.length) {
+        for (const b of old) await dbPut(b);
+        library = old;
+      }
+    }
+  } catch(e){ console.error('Could not load library from storage', e); library = []; }
+  buildFacets(); render();
+})();
 </script>
 </body>
 </html>
