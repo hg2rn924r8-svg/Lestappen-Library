@@ -403,12 +403,18 @@ async function openReader(book){
   try {
     currentBook = ePub(await book.fileBlob.arrayBuffer());
     currentRendition = currentBook.renderTo('readerArea', { width: '100%', height: '100%', flow: 'paginated', spread: 'auto' });
-    await currentRendition.display();
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000));
+    await Promise.race([currentRendition.display(), timeout]);
     readerReady = true;
     document.getElementById('readerLoading').classList.add('hidden');
   } catch(e) {
-    console.error('Reader failed to open', e);
-    alert("Sorry, this book couldn't be opened for reading — it may use a format the reader doesn't support.");
+    if (e.message === 'timeout') {
+      console.error('Reader timed out opening', book.title, '— book state:', currentBook);
+      alert("This book is taking too long to load and may not be fully supported by the reader. Check the console for details, or try a different book.");
+    } else {
+      console.error('Reader failed to open', e);
+      alert("Sorry, this book couldn't be opened for reading — it may use a format the reader doesn't support.");
+    }
     closeReader();
   }
 }
