@@ -7,7 +7,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
 <style>
 :root{
   --bg:#EDEAE1; --panel:#E3DFD2; --ink:#20241E; --ink-soft:#5B5F55;
@@ -59,42 +58,17 @@ main{flex:1;min-width:0}
 .tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
 .tag{font-size:11px;padding:2px 7px;border:1px solid var(--line);border-radius:20px;color:var(--ink-soft)}
 .tag.genre{border-color:var(--accent-soft);color:var(--accent)}
-.card-actions{display:flex;gap:10px}
-.card-actions button{font-size:12px;background:none;border:none;color:var(--accent);cursor:pointer;padding:0;text-decoration:underline}
+.card-actions{display:flex;gap:12px;flex-wrap:wrap}
+.card-actions button,.card-actions a{font-size:12px;background:none;border:none;color:var(--accent);cursor:pointer;padding:0;text-decoration:underline;font-family:var(--sans)}
 .edit-form{margin-top:10px;padding-top:10px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:7px}
 .edit-form label{font-size:11px;color:var(--ink-soft)}
 .edit-form input{padding:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:2px;font-size:13px;width:100%}
-.edit-form .row{display:flex;gap:8px}
-.edit-form .row button{flex:1;padding:6px;border:1px solid var(--line);background:var(--accent);color:#fff;border-radius:2px;cursor:pointer;font-size:12px}
-.edit-form .row button.del{background:none;color:var(--accent);border-color:var(--accent)}
-.empty{color:var(--ink-soft);font-size:14px;padding:40px 0;text-align:center;font-family:var(--serif);font-size:18px}
-::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+.edit-form button{padding:6px;border:1px solid var(--line);background:var(--accent);color:#fff;border-radius:2px;cursor:pointer;font-size:12px}
+.empty{color:var(--ink-soft);padding:40px 0;text-align:center;font-family:var(--serif);font-size:18px}
 @media(max-width:760px){.layout{flex-direction:column}aside{width:100%;position:static}}
-#readerOverlay{position:fixed;inset:0;background:var(--bg);z-index:100;display:none;flex-direction:column}
-#readerOverlay.open{display:flex}
-.reader-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);flex-shrink:0}
-.reader-bar h3{font-size:15px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.reader-bar button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:3px;padding:7px 12px;cursor:pointer;font-size:13px;font-family:var(--sans)}
-#readerArea{flex:1;position:relative;overflow:hidden}
-#readerLoading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-soft);font-family:var(--serif);font-size:16px;z-index:1;background:var(--bg)}
-#readerLoading.hidden{display:none}
-.reader-nav{position:absolute;top:0;bottom:0;width:15%;display:flex;align-items:center;z-index:2;background:none;border:none;cursor:pointer;color:var(--ink-soft);font-size:22px}
-.reader-nav.prev{left:0;justify-content:flex-start;padding-left:6px}
-.reader-nav.next{right:0;justify-content:flex-end;padding-right:6px}
 </style>
 </head>
 <body>
-<div id="readerOverlay">
-  <div class="reader-bar">
-    <h3 id="readerTitle"></h3>
-    <button id="readerClose">Close</button>
-  </div>
-  <div id="readerArea">
-    <div id="readerLoading">Loading book…</div>
-    <button class="reader-nav prev" id="readerPrev">‹</button>
-    <button class="reader-nav next" id="readerNext">›</button>
-  </div>
-</div>
 <div class="wrap">
   <header>
     <div>
@@ -109,24 +83,15 @@ main{flex:1;min-width:0}
   </header>
   <div class="layout">
     <aside>
-      <section>
-        <h3>Genre</h3>
-        <div class="facet-list" id="genreFacets"></div>
-      </section>
-      <section>
-        <h3>Tropes</h3>
-        <div class="facet-list" id="tropeFacets"></div>
-      </section>
+      <section><h3>Genre</h3><div class="facet-list" id="genreFacets"></div></section>
+      <section><h3>Tropes</h3><div class="facet-list" id="tropeFacets"></div></section>
       <section>
         <h3>Word count</h3>
         <div class="range-row">
-          <input type="number" id="wcMin" placeholder="min">
-          <span>–</span>
-          <input type="number" id="wcMax" placeholder="max">
+          <input type="number" id="wcMin" placeholder="min"><span>–</span><input type="number" id="wcMax" placeholder="max">
         </div>
       </section>
       <button class="clear-btn" id="clearFilters">Clear all filters</button>
-      <button class="clear-btn" id="removeOld" style="display:block;margin-top:8px">Remove old-format books</button>
     </aside>
     <main>
       <div class="toolbar">
@@ -184,19 +149,8 @@ async function dbDelete(id){
 }
 
 function wordsOf(str){ return (str.match(/\S+/g) || []).length; }
-
-function findEntry(zip, path){
-  if (!path) return null;
-  const candidates = [path, decodeURIComponent(path), encodeURI(path), path.replace(/^\.?\//, '')];
-  for (const c of candidates) { const f = zip.file(c); if (f) return f; }
-  // last resort: match by filename ignoring folder casing/prefixes
-  const wanted = path.split('/').pop().toLowerCase();
-  const all = zip.file(/.*/);
-  return all.find(f => f.name.toLowerCase().endsWith(wanted)) || null;
-}
-function byLocalName(doc, name){
-  return [...doc.getElementsByTagName('*')].filter(el => (el.localName || el.tagName.split(':').pop()) === name);
-}
+function escAttr(s){ return String(s||'').replace(/"/g,'&quot;'); }
+function escHtml(s){ return String(s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
 async function readFileWithRetry(file, attempts = 3){
   for (let i = 0; i < attempts; i++) {
@@ -207,26 +161,42 @@ async function readFileWithRetry(file, attempts = 3){
     }
   }
 }
+function findEntry(zip, path){
+  if (!path) return null;
+  const candidates = [path, decodeURIComponent(path), encodeURI(path), path.replace(/^\.?\//, '')];
+  for (const c of candidates) { const f = zip.file(c); if (f) return f; }
+  const wanted = path.split('/').pop().toLowerCase();
+  return zip.file(/.*/).find(f => f.name.toLowerCase().endsWith(wanted)) || null;
+}
+function byLocalName(doc, name){
+  return [...doc.getElementsByTagName('*')].filter(el => (el.localName || el.tagName.split(':').pop()) === name);
+}
+// AO3 epubs normally mention the work's link near the start; look for it in the first few files
+const AO3_RE = /https?:\/\/(?:www\.)?archiveofourown\.org\/works\/\d+/i;
+async function findAo3Url(zip){
+  for (const f of zip.file(/\.(opf|x?html?)$/i).slice(0, 12)) {
+    try {
+      const m = (await f.async('string')).match(AO3_RE);
+      if (m) return m[0].replace(/^http:/i, 'https:');
+    } catch(e){}
+  }
+  return '';
+}
 
 async function parseEpub(file){
   const zip = await JSZip.loadAsync(await readFileWithRetry(file));
   const fallbackTitle = file.name.replace(/\.epub$/i, '');
   let title = fallbackTitle, author = 'Unknown', genre = '', wordCount = 0, hadError = false;
-
   try {
-    const containerEntry = findEntry(zip, 'META-INF/container.xml');
-    const containerXml = await containerEntry.async('string');
+    const containerXml = await findEntry(zip, 'META-INF/container.xml').async('string');
     const containerDoc = new DOMParser().parseFromString(containerXml, 'application/xml');
     const opfPath = byLocalName(containerDoc, 'rootfile')[0]?.getAttribute('full-path');
     const baseDir = opfPath && opfPath.includes('/') ? opfPath.slice(0, opfPath.lastIndexOf('/') + 1) : '';
-    const opfEntry = findEntry(zip, opfPath);
-    const opfXml = await opfEntry.async('string');
+    const opfXml = await findEntry(zip, opfPath).async('string');
     const opfDoc = new DOMParser().parseFromString(opfXml, 'application/xml');
-
     try { title = byLocalName(opfDoc, 'title')[0]?.textContent?.trim() || fallbackTitle; } catch(e){}
     try { author = byLocalName(opfDoc, 'creator')[0]?.textContent?.trim() || 'Unknown'; } catch(e){}
     try { genre = byLocalName(opfDoc, 'subject')[0]?.textContent?.trim() || ''; } catch(e){}
-
     try {
       const manifest = {};
       for (const item of byLocalName(opfDoc, 'item')) manifest[item.getAttribute('id')] = item.getAttribute('href');
@@ -237,8 +207,7 @@ async function parseEpub(file){
         if (!entry) continue;
         try {
           const html = await entry.async('string');
-          const text = new DOMParser().parseFromString(html, 'text/html').body?.textContent || '';
-          wordCount += wordsOf(text);
+          wordCount += wordsOf(new DOMParser().parseFromString(html, 'text/html').body?.textContent || '');
         } catch(e) {}
       }
     } catch(e) { hadError = true; }
@@ -246,7 +215,8 @@ async function parseEpub(file){
     console.error('Epub parse error for', file.name, e);
     hadError = true;
   }
-  return { id: crypto.randomUUID(), title, author, genre, tropes: [], wordCount, dateAdded: Date.now(), sourceFile: file.name, parseError: hadError && wordCount === 0, fileBlob: file };
+  const url = await findAo3Url(zip);
+  return { id: crypto.randomUUID(), title, author, genre, tropes: [], wordCount, url, dateAdded: Date.now(), sourceFile: file.name, parseError: hadError && wordCount === 0 };
 }
 
 document.getElementById('uploadBtn').onclick = () => document.getElementById('fileInput').click();
@@ -259,12 +229,8 @@ document.getElementById('fileInput').onchange = async (e) => {
     try {
       book = await parseEpub(files[i]);
     } catch(err) {
-      if (err.name === 'AbortError') {
-        console.error(`Failed to parse ${files[i].name}: the browser couldn't fully read this file after 3 tries. If it lives in a cloud-synced folder (OneDrive, Google Drive, iCloud Drive, Dropbox), make sure it's downloaded/available offline, or copy it somewhere fully local and try again.`);
-      } else {
-        console.error('Failed to parse', files[i].name, err);
-      }
-      book = { id: crypto.randomUUID(), title: files[i].name.replace(/\.epub$/i,''), author: 'Unknown', genre:'', tropes:[], wordCount:0, dateAdded: Date.now(), sourceFile: files[i].name, parseError:true, fileBlob: files[i] };
+      console.error('Failed to parse', files[i].name, err);
+      book = { id: crypto.randomUUID(), title: files[i].name.replace(/\.epub$/i,''), author: 'Unknown', genre:'', tropes:[], wordCount:0, url:'', dateAdded: Date.now(), sourceFile: files[i].name, parseError:true };
     }
     library.push(book);
     await dbPut(book);
@@ -302,24 +268,22 @@ document.getElementById('clearFilters').onclick = () => {
   document.getElementById('wcMin').value = ''; document.getElementById('wcMax').value = '';
   buildFacets(); render();
 };
-document.getElementById('removeOld').onclick = async () => {
-  const stale = library.filter(b => !b.fileBlob);
-  if (!stale.length) { alert('No old-format books found — everything already has a saved file.'); return; }
-  if (!confirm(`Remove ${stale.length} book(s) that don't have a saved file? You can re-upload them anytime to add them back with reading enabled.`)) return;
-  for (const b of stale) await dbDelete(b.id);
-  library = library.filter(b => b.fileBlob);
-  buildFacets(); render();
-};
 
 function editForm(book){
   return `<div class="edit-form">
     <label>Genre</label><input data-f="genre" value="${escAttr(book.genre)}">
     <label>Tropes (comma separated)</label><input data-f="tropes" value="${escAttr((book.tropes||[]).join(', '))}">
-    <div class="row"><button data-act="save">Save</button><button class="del" data-act="form-delete">Delete</button></div>
+    <label>AO3 link</label><input data-f="url" placeholder="https://archiveofourown.org/works/…" value="${escAttr(book.url)}">
+    <button data-act="save">Save</button>
   </div>`;
 }
-function escAttr(s){ return String(s||'').replace(/"/g,'&quot;'); }
-function escHtml(s){ return String(s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+async function deleteBook(id){
+  if (!confirm('Remove this book from your shelf?')) return;
+  await dbDelete(id);
+  library = library.filter(b => b.id !== id);
+  buildFacets(); render();
+}
 
 function render(){
   let list = library.filter(b => {
@@ -341,14 +305,8 @@ function render(){
 
   document.getElementById('count').textContent = `${list.length} of ${library.length} books`;
   const grid = document.getElementById('grid');
-  if (!library.length) {
-    grid.innerHTML = '<div class="empty">Your shelf is empty. Add some epubs to begin.</div>';
-    return;
-  }
-  if (!list.length) {
-    grid.innerHTML = '<div class="empty">Nothing matches these filters.</div>';
-    return;
-  }
+  if (!library.length) { grid.innerHTML = '<div class="empty">Your shelf is empty. Add some epubs to begin.</div>'; return; }
+  if (!list.length) { grid.innerHTML = '<div class="empty">Nothing matches these filters.</div>'; return; }
   grid.innerHTML = list.map(b => `
     <div class="card" data-id="${b.id}">
       <h3>${escHtml(b.title)}</h3>
@@ -359,21 +317,12 @@ function render(){
         ${(b.tropes||[]).map(t => `<span class="tag">${escHtml(t)}</span>`).join('')}
       </div>
       <div class="card-actions">
-        ${b.fileBlob ? '<button data-act="read">Read</button>' : ''}
+        ${b.url ? `<a href="${escAttr(b.url)}" target="_blank" rel="noopener noreferrer">Open on AO3</a>` : ''}
         <button data-act="edit">Edit tags</button>
         <button data-act="delete">Delete</button>
       </div>
     </div>`).join('');
 
-  grid.querySelectorAll('[data-act="read"]').forEach(btn => {
-    btn.onclick = () => openReader(library.find(b => b.id === btn.closest('.card').dataset.id));
-  });
-  async function deleteBook(id){
-    if (!confirm('Remove this book from your shelf?')) return;
-    await dbDelete(id);
-    library = library.filter(b => b.id !== id);
-    buildFacets(); render();
-  }
   grid.querySelectorAll('.card-actions > [data-act="delete"]').forEach(btn => {
     btn.onclick = () => deleteBook(btn.closest('.card').dataset.id);
   });
@@ -386,56 +335,32 @@ function render(){
         const book = library.find(b => b.id === card.dataset.id);
         book.genre = card.querySelector('[data-f="genre"]').value.trim();
         book.tropes = card.querySelector('[data-f="tropes"]').value.split(',').map(s => s.trim()).filter(Boolean);
+        let url = card.querySelector('[data-f="url"]').value.trim();
+        if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+        book.url = url;
         await dbPut(book); buildFacets(); render();
       };
-      card.querySelector('[data-act="form-delete"]').onclick = () => deleteBook(card.dataset.id);
     };
   });
 }
 
-let currentBook = null, currentRendition = null, readerReady = false;
-async function openReader(book){
-  if (!book.fileBlob) { alert("This book's original file wasn't kept, so it can't be reopened for reading — try re-adding it."); return; }
-  readerReady = false;
-  document.getElementById('readerTitle').textContent = book.title;
-  document.getElementById('readerOverlay').classList.add('open');
-  document.getElementById('readerLoading').classList.remove('hidden');
-  try {
-    currentBook = ePub(await book.fileBlob.arrayBuffer());
-    currentRendition = currentBook.renderTo('readerArea', { width: '100%', height: '100%', flow: 'paginated', spread: 'auto' });
-    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000));
-    await Promise.race([currentRendition.display(), timeout]);
-    readerReady = true;
-    document.getElementById('readerLoading').classList.add('hidden');
-  } catch(e) {
-    if (e.message === 'timeout') {
-      console.error('Reader timed out opening', book.title, '— book state:', currentBook);
-      alert("This book is taking too long to load and may not be fully supported by the reader. Check the console for details, or try a different book.");
-    } else {
-      console.error('Reader failed to open', e);
-      alert("Sorry, this book couldn't be opened for reading — it may use a format the reader doesn't support.");
-    }
-    closeReader();
+// One-time cleanup: earlier versions kept a full copy of each epub for reading. Drop those copies
+// (freeing space) and pull each book's AO3 link out of them first.
+async function stripStoredFiles(){
+  const old = library.filter(b => b.fileBlob);
+  if (!old.length) return;
+  const progress = document.getElementById('progress');
+  for (let i = 0; i < old.length; i++) {
+    progress.textContent = `Updating library ${i+1} of ${old.length}…`;
+    const b = old[i];
+    try { if (!b.url) b.url = await findAo3Url(await JSZip.loadAsync(await b.fileBlob.arrayBuffer())); } catch(e){}
+    delete b.fileBlob;
+    b.url = b.url || '';
+    await dbPut(b);
   }
+  progress.textContent = '';
+  render();
 }
-function closeReader(){
-  readerReady = false;
-  document.getElementById('readerOverlay').classList.remove('open');
-  document.getElementById('readerLoading').classList.remove('hidden');
-  try { currentRendition?.destroy(); currentBook?.destroy(); } catch(e){}
-  currentRendition = null; currentBook = null;
-}
-function goPrev(){ if (readerReady) try { currentRendition.prev(); } catch(e){ console.error(e); } }
-function goNext(){ if (readerReady) try { currentRendition.next(); } catch(e){ console.error(e); } }
-document.getElementById('readerClose').onclick = closeReader;
-document.getElementById('readerPrev').onclick = goPrev;
-document.getElementById('readerNext').onclick = goNext;
-document.addEventListener('keydown', e => {
-  if (!document.getElementById('readerOverlay').classList.contains('open')) return;
-  if (e.key === 'ArrowLeft') goPrev();
-  if (e.key === 'ArrowRight') goNext();
-  if (e.key === 'Escape') closeReader();
-});
 
 (async function init(){
   try {
@@ -443,13 +368,11 @@ document.addEventListener('keydown', e => {
     if (!library.length) {
       let old = [];
       try { old = JSON.parse(localStorage.getItem('stacks-library-v1') || '[]'); } catch(e){}
-      if (old.length) {
-        for (const b of old) await dbPut(b);
-        library = old;
-      }
+      if (old.length) { for (const b of old) await dbPut(b); library = old; }
     }
   } catch(e){ console.error('Could not load library from storage', e); library = []; }
   buildFacets(); render();
+  stripStoredFiles();
 })();
 </script>
 </body>
